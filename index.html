@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora de Cripto: Hoja de Cálculo Dinámica</title>
+    <!-- Tailwind CSS CDN para un estilo moderno y responsivo -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Fuente Inter para una mejor legibilidad */
+        body {
+            font-family: "Inter", sans-serif;
+        }
+        /* Estilos para los campos de entrada con foco */
+        input:focus {
+            border-color: #3b82f6; /* Tailwind blue color for border */
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.4); /* Focus shadow */
+        }
+        /* Custom scrollbar for the table container */
+        .table-container::-webkit-scrollbar {
+            height: 8px;
+        }
+        .table-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        .table-container::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        .table-container::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-purple-800 to-blue-900 min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-3xl text-center border border-gray-200">
+        <h1 class="text-3xl font-extrabold text-gray-900 mb-4">Calculadora Cripto</h1>
+        <p class="text-gray-600 mb-8 text-lg">
+            Gestiona tus cálculos de Stop Loss y Take Profit para múltiples criptomonedas.
+        </p>
+
+        <!-- Global Percentage Input -->
+        <div class="mb-8 text-left max-w-xs mx-auto">
+            <label for="globalPercentage" class="block text-gray-700 text-sm font-semibold mb-2">
+                Porcentaje Global de Pérdida/Ganancia (%)
+            </label>
+            <input
+                type="number"
+                id="globalPercentage"
+                placeholder="Ej: 10 (para 10%)"
+                class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none transition duration-200 text-gray-800 text-lg"
+                min="0"
+                step="0.1"
+                value="10" <!-- Default value for convenience -->
+                aria-label="Porcentaje global de pérdida o ganancia deseado"
+            >
+        </div>
+
+        <!-- Table Container -->
+        <div class="overflow-x-auto rounded-lg shadow-md mb-6 table-container">
+            <table class="min-w-full bg-white border-collapse">
+                <thead class="bg-gray-100 border-b border-gray-200">
+                    <tr>
+                        <th class="py-3 px-4 text-left text-xs font-medium text-gray-600 uppercase tracking-wider rounded-tl-lg">
+                            Moneda
+                        </th>
+                        <th class="py-3 px-4 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                            Valor Actual (USDT)
+                        </th>
+                        <th class="py-3 px-4 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                            Precio Compra (USDT)
+                        </th>
+                        <th class="py-3 px-4 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                            Stop Loss (USDT)
+                        </th>
+                        <th class="py-3 px-4 text-left text-xs font-medium text-gray-600 uppercase tracking-wider rounded-tr-lg">
+                            Take Profit (USDT)
+                        </th>
+                        <th class="py-3 px-4 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                            Acciones
+                        </th>
+                    </tr>
+                </thead>
+                <tbody id="cryptoTableBody">
+                    <!-- Crypto rows will be inserted here by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Add Row Button -->
+        <button
+            id="addRowButton"
+            class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-xl shadow-lg transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75 mb-4"
+        >
+            + Añadir Criptomoneda
+        </button>
+
+        <p class="text-gray-500 text-sm mt-4">
+            Los cálculos se actualizan automáticamente al cambiar los valores.
+        </p>
+    </div>
+
+    <script>
+        // Get references to DOM elements
+        const globalPercentageInput = document.getElementById('globalPercentage');
+        const cryptoTableBody = document.getElementById('cryptoTableBody');
+        const addRowButton = document.getElementById('addRowButton');
+
+        let rowCounter = 0; // To give unique IDs to new rows
+
+        /**
+         * Calculates Stop Loss and Take Profit prices for a given purchase price
+         * and the global percentage.
+         * @param {number} purchasePrice - The price at which the crypto was bought.
+         * @param {number} percentage - The global percentage for SL/TP.
+         * @returns {{stopLoss: string, takeProfit: string}} - Formatted SL/TP prices.
+         */
+        function calculatePrices(purchasePrice, percentage) {
+            // If purchasePrice is NaN or negative, return 0.00 for both SL/TP
+            if (isNaN(purchasePrice) || purchasePrice < 0) {
+                return { stopLoss: '0.00 USDT', takeProfit: '0.00 USDT' };
+            }
+            // If percentage is NaN or negative, it's handled by updateAllRows defaulting it
+            // So, here we only need to ensure percentage is valid for calculation
+            if (isNaN(percentage) || percentage < 0) {
+                percentage = 0; // Should ideally not happen if updateAllRows defaults it, but as a safeguard
+            }
+
+            const decimalPercentage = percentage / 100;
+            const stopLossPrice = purchasePrice * (1 - decimalPercentage);
+            const takeProfitPrice = purchasePrice * (1 + decimalPercentage);
+            return {
+                stopLoss: `${stopLossPrice.toFixed(2)} USDT`,
+                takeProfit: `${takeProfitPrice.toFixed(2)} USDT`
+            };
+        }
+
+        /**
+         * Updates the Stop Loss and Take Profit values for all rows in the table.
+         */
+        function updateAllRows() {
+            let globalPercentage = parseFloat(globalPercentageInput.value);
+            // If globalPercentage is NaN or negative, default it to the initial value of 10
+            // This ensures calculations always use a valid percentage.
+            if (isNaN(globalPercentage) || globalPercentage < 0) {
+                globalPercentage = 10; // Default to 10% if input is invalid or empty
+            }
+
+            const rows = cryptoTableBody.querySelectorAll('tr');
+
+            rows.forEach(row => {
+                const purchasePriceInput = row.querySelector('.purchase-price-input');
+                const stopLossSpan = row.querySelector('.stop-loss-price');
+                const takeProfitSpan = row.querySelector('.take-profit-price');
+
+                const purchasePrice = parseFloat(purchasePriceInput.value);
+
+                // Pass the (potentially defaulted) globalPercentage to calculatePrices
+                const calculated = calculatePrices(purchasePrice, globalPercentage);
+                stopLossSpan.textContent = calculated.stopLoss;
+                takeProfitSpan.textContent = calculated.takeProfit;
+            });
+        }
+
+        /**
+         * Adds a new row to the crypto table.
+         * @param {string} currencyName - Optional initial currency name.
+         * @param {number} currentValue - Optional initial current value.
+         * @param {number} purchasePrice - Optional initial purchase price.
+         */
+        function addCryptoRow(currencyName = '', currentValue = '', purchasePrice = '') {
+            rowCounter++;
+            const newRow = document.createElement('tr');
+            newRow.id = `crypto-row-${rowCounter}`;
+            newRow.className = 'border-b border-gray-100 last:border-b-0 hover:bg-gray-50 transition duration-150';
+
+            newRow.innerHTML = `
+                <td class="py-3 px-4">
+                    <input
+                        type="text"
+                        value="${currencyName}"
+                        placeholder="Ej: ETH"
+                        class="w-full p-2 border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-400 text-gray-800"
+                        aria-label="Nombre de la criptomoneda"
+                    >
+                </td>
+                <td class="py-3 px-4">
+                    <input
+                        type="number"
+                        value="${currentValue}"
+                        placeholder="Ej: 1050.00"
+                        class="current-value-input w-full p-2 border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-400 text-gray-800"
+                        min="0"
+                        step="0.01"
+                        aria-label="Valor actual de la criptomoneda"
+                    >
+                </td>
+                <td class="py-3 px-4">
+                    <input
+                        type="number"
+                        value="${purchasePrice}"
+                        placeholder="Ej: 1000.00"
+                        class="purchase-price-input w-full p-2 border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-400 text-gray-800"
+                        min="0"
+                        step="0.01"
+                        aria-label="Precio de compra de la criptomoneda"
+                    >
+                </td>
+                <td class="py-3 px-4 text-red-600 font-semibold stop-loss-price">0.00 USDT</td>
+                <td class="py-3 px-4 text-green-600 font-semibold take-profit-price">0.00 USDT</td>
+                <td class="py-3 px-4">
+                    <button
+                        class="delete-row-button bg-red-500 hover:bg-red-600 text-white text-sm font-bold py-1 px-3 rounded-md transition duration-200"
+                        aria-label="Eliminar esta fila"
+                    >
+                        Eliminar
+                    </button>
+                </td>
+            `;
+
+            cryptoTableBody.appendChild(newRow);
+
+            // Add event listeners for the new row's inputs and button
+            const purchasePriceInput = newRow.querySelector('.purchase-price-input');
+            purchasePriceInput.addEventListener('input', updateAllRows); // Update all when this input changes
+
+            const deleteButton = newRow.querySelector('.delete-row-button');
+            deleteButton.addEventListener('click', () => {
+                newRow.remove(); // Remove the row when delete button is clicked
+                updateAllRows(); // Recalculate if needed (not strictly necessary here but good practice)
+            });
+
+            // Initial calculation for the new row
+            updateAllRows();
+        }
+
+        // Event listener for the global percentage input
+        globalPercentageInput.addEventListener('input', updateAllRows);
+
+        // Event listener for the "Add Crypto" button
+        addRowButton.addEventListener('click', () => addCryptoRow());
+
+        // Add an initial row when the page loads
+        window.onload = () => {
+            addCryptoRow('ETH', 1050, 1000); // Example initial row with current value
+            addCryptoRow('BTC', 61000, 60000); // Another example initial row
+            updateAllRows(); // Ensure all initial calculations are done
+        };
+    </script>
+</body>
+</html>
